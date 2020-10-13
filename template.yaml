@@ -1,0 +1,150 @@
+Transform: AWS::Serverless-2016-10-31
+
+Description: API -> SNS send sms
+
+Parameters:
+  CorsOrigin:
+    Description: Header Access-Control-Allow-Origin
+    Default: "'*'"
+    Type: String
+  CorsMethods:
+    Description: Header Access-Control-Allow-Headers
+    Default: "'*'"
+    Type: String
+  CorsHeaders:
+    Description: Header Access-Control-Allow-Headers
+    Default: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+    Type: String
+  SwaggerS3File:
+    Description: 'S3 "swagger.yaml" file location'
+    Default: "./swagger_api_sns.yaml"
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 15
+    Runtime: java11
+    MemorySize: 512
+
+Resources:
+  LambdaRoleForRuleExecution:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 'sts:AssumeRole'
+            Principal:
+              Service: lambda.amazonaws.com
+      Policies:
+        - PolicyName: WriteCloudWatchLogs
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+        - PolicyName: FullAccessSNS
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'sns:*'
+                Resource: '*'              
+
+  ApiGatewayLambdaCallSNSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: !Join ["", ["/", !Ref "AWS::StackName", "/"]]
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowApiGatewayServiceToAssumeRole
+            Effect: Allow
+            Action:
+              - 'sts:AssumeRole'
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+      Policies:        
+      - PolicyName: "InvokeLambdaToTriggerSNS"
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action: "lambda:InvokeFunction"
+              Resource:
+                - !GetAtt TriggerSNSFunction.Arn
+        # - PolicyName: LambdaExecutionAndCWLogging
+        #   PolicyDocument:
+        #     Version: 2012-10-17
+        #     Statement:
+        #       - Effect: Allow
+        #         Action:
+        #           - "lambda:*"
+        #           - "logs:*"
+        #         Resource:
+        #           - "*"
+
+  # Create our SNS Topic
+  # SnsTopic:
+  #   Type: AWS::SNS::Topic
+  #   Properties:
+  #     TopicName: MySMSTopic 
+
+# These function belong to state machine
+  TriggerSNSFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-trigger-sns
+      CodeUri: functions/TriggerSNS
+      Handler: TriggerSNS.src.main.java.triggerSNS.App::handleRequest
+      Role: !GetAtt LambdaRoleForRuleExecution.Arn
+      Timeout: 20
+      Events:
+        TriggerAPI:
+          Type: Api
+          Properties: 
+            Path: /send-sms
+            Method: post
+            RestApiId: !Ref SNSTriggerAPI
+  DeleteTopicFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-delete-sns-topic
+      CodeUri: functions/TriggerSNS
+      Handler: TriggerSNS.src.main.java.triggerSNS.App::handleRequestDelete
+      Role: !GetAtt LambdaRoleForRuleExecution.Arn
+      Timeout: 20
+      Events:
+        DeleteTopic:
+          Type: Api
+          Properties: 
+            Path: /delete-topic
+            Method: post
+            RestApiId: !Ref SNSTriggerAPI
+
+      
+  SNSTriggerAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: dev
+      Name: !Sub ${AWS::StackName}-api
+      DefinitionBody:
+        'Fn::Transform':
+          Name: AWS::Include
+          Parameters:
+            # s3 location of the swagger file
+            Location: s3://my-api-documents/swagger_api_sns.yaml #s3://my-api-documents/swagger.yaml #!Ref SwaggerS3File
+
+
+
+
+
+

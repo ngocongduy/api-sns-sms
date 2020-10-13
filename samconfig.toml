@@ -1,0 +1,11 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "api-sns-sms"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-7m1jbiju3gkn"
+s3_prefix = "api-sns-sms"
+region = "ap-southeast-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_NAMED_IAM"
+parameter_overrides = "CorsOrigin=\"'*'\" CorsMethods=\"'*'\" CorsHeaders=\"'Content-Type,X-Amz-Date,Authorization,X-Api-Key'\" SwaggerS3File=\"./swagger_api_sns.yaml\""
